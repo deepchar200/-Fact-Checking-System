@@ -1,4 +1,3 @@
-# imports
 from fastapi import FastAPI, HTTPException, Depends
 from sqlmodel import Session, select
 from typing import List
@@ -21,6 +20,7 @@ import string
 # This variable contains all standard ASCII punctuation:
 # ('!', '"', '#', '$', '%', '&', "'", '(', ')', '*', '+', ',', '-', '.', '/', ':', ';', '<', '=', '>', '?', '@', '[', '\\', ']', '^', '_', '`', '{', '|', '}', '~')
 PUNCT_TRANSLATION_TABLE = str.maketrans('', '', string.punctuation)
+
 # --- Local Imports ---
 from .models import create_db_and_tables, PredictionHistory, NewsRequest
 from .database import get_session, engine
@@ -35,6 +35,7 @@ TRUSTED_DOMAINS = [
     "indianexpress.com", "bbc.com", "bbc.co.uk", "hindustantimes.com",
     "livemint.com", "business-standard.com"
 ]
+
 # --- LOAD MODELS ---
 BASE_DIR = Path(__file__).resolve().parent.parent
 DL_MODEL_PATH = BASE_DIR / "indic_bert_model" 
@@ -64,9 +65,6 @@ try:
     
 except Exception as e:
     print(f"[INIT] ❌ Error loading Models: {e}")
-    dl_tokenizer = None
-    dl_model = None
-    nli_model = None
 
 @app.on_event("startup")
 def on_startup():
@@ -455,15 +453,10 @@ def check_tier_1_5_knowledge_base(claim: str) -> dict:
     print("   [DEBUG] No candidate met the 70% Soft Threshold.")
     return {"status": "not_found"}
 
-
 # TIER 2
 def predict_tier_2_dl(text: str) -> dict:
-    
     print(f"\n--- 🤖 [DEBUG] TIER 2: AI STYLE CHECK ---")
-    
-    if not dl_model or not dl_tokenizer:
-        # Return a specific error status when the model is missing
-        return {"label": "Model Disabled", "score": 0.0, "error": "Tier 2 Model not found locally."}
+    if not dl_model: return {"label": "Model Error", "score": 0.0}
     
     try:
         inputs = dl_tokenizer(text, return_tensors="pt", truncation=True, max_length=128, padding="max_length")
