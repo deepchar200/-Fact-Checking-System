@@ -1,0 +1,14 @@
+# SECRETS AND ENVIRONMENT
+.env
+
+# LARGE DATA AND MODEL FILES (MUST BE IGNORED)
+indic-bert-model/
+Dataset/
+
+# JUPYTER AND PYTHON CACHES
+__pycache__/
+*.ipynb
+*.pyc
+
+# SYSTEM FILES
+.DS_Store
