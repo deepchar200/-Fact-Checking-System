@@ -27,7 +27,7 @@ Solution: A Pronoun Replacement Heuristic was implemented to dynamically inject 
 ⚙️ Setup and Installation
 
 1. Repository Structure
-
+```text
 .
 ├── .gitignore          (Ensures large models/keys are ignored)
 ├── app/                (Core logic: database, NLI calls, main pipeline)
@@ -38,7 +38,7 @@ Solution: A Pronoun Replacement Heuristic was implemented to dynamically inject 
 ├── frontend/           (Streamlit application UI)
 │   └── dashboard1.py
 └── indic-bert-model/   (**Manually placed model files**)
-
+```
 
 2. Dependencies
 
