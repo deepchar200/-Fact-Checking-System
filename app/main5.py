@@ -82,7 +82,7 @@ def check_tier_1_trusted_sources(claim: str) -> dict:
     url = "https://gnews.io/api/v4/search"
     
     # 1. Clean & Extract
-    clean_claim = claim.replace("’", "").translate(str.maketrans('', '', string.punctuation))
+    clean_claim = claim.translate(PUNCT_TRANSLATION_TABLE)
     words = clean_claim.split()
     
     # Extract ALL Capitalized words > 2 chars
@@ -115,7 +115,8 @@ def check_tier_1_trusted_sources(claim: str) -> dict:
             "apikey": NEWS_API_KEY,
             "lang": "en",
             "country": "in",
-            "max": 10
+            "max": 10,
+            "in" : "title"
         }
         
         try:
