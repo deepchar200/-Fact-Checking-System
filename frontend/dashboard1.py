@@ -29,7 +29,7 @@ col_logo, col_title = st.columns([1, 5])
 with col_logo:
     st.markdown("<h1>🛡️</h1>", unsafe_allow_html=True)
 with col_title:
-    st.title("Fake News Detection")
+    st.title("Automated Fact-Checking System using Multi-Tier NLP")
     st.caption("Hybrid Architecture: Live News (GNews) + Knowledge Base (Wiki) + Deep Learning (Indic-BERT)")
 
 st.divider()
@@ -48,7 +48,7 @@ with tab_verify:
         st.subheader("Verify a Claim")
         user_claim = st.text_area(
             "Enter a news headline or statement:", 
-            placeholder="e.g., 'India wins 1983 World Cup' or 'Dharmendra is died'",
+            placeholder="e.g., 'India wins 1983 World Cup'",
             height=100
         )
         
@@ -67,6 +67,7 @@ with tab_verify:
                     if response.status_code == 200:
                         try:
                             data = response.json()
+                            print("Data", data)
                             if isinstance(data, dict):
                                  verdict = data.get("verdict", "Unknown")
                                  method = data.get("method", "Unknown")
@@ -127,8 +128,8 @@ with tab_verify:
                                 # --- CRASH PROOFING ---
                                 if isinstance(item, dict):
                                     # It is a valid dictionary
-                                    title = item.get('title', 'No Title')
-                                    source = item.get('source', {}).get('name', 'Unknown')
+                                    title = item.get('headline', 'No Title')
+                                    source = item.get('source', 'Unknown')
                                     url = item.get('url', '#')
                                     
                                     with st.expander(f"{source}: {title}"):
