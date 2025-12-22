@@ -15,6 +15,7 @@ import string
 import re # <--- Ensure this is imported at the top
 # --- for spliting the sentences of the premise into parts ---
 from sentence_transformers import util
+from rake_nltk import Rake
 import nltk
 nltk.download('punkt_tab')
 import string
@@ -33,11 +34,11 @@ NEWS_API_KEY = "f20e28ccefdba6327e432510be360a93"  # <--- PASTE KEY HERE
 TRUSTED_DOMAINS = [
     "timesofindia.indiatimes.com", "thehindu.com", "ndtv.com",
     "indianexpress.com", "bbc.com", "bbc.co.uk", "hindustantimes.com",
-    "livemint.com", "business-standard.com"
+    "livemint.com", "business-standard.com", "economictimes.indiatimes.com", "theprint.in"
 ]
 # --- LOAD MODELS ---
 BASE_DIR = Path(__file__).resolve().parent.parent
-DL_MODEL_PATH = BASE_DIR / "indic_bert_model" 
+DL_MODEL_PATH = BASE_DIR / "indic-bert-model" 
 
 dl_tokenizer = None
 dl_model = None
@@ -74,116 +75,88 @@ def on_startup():
 
 # --- HELPER FUNCTIONS ---
 
-# TIER 1 check_live_news
 def check_tier_1_trusted_sources(claim: str) -> dict:
+
     """
+
     Tier 1: Live News Check with STRICT Subject Matching.
+
     """
+    
     url = "https://gnews.io/api/v4/search"
     
-    # 1. Clean & Extract
-    clean_claim = claim.translate(PUNCT_TRANSLATION_TABLE)
-    words = clean_claim.split()
-    
-    # Extract ALL Capitalized words > 2 chars
-    entities = [w for w in words if w[0].isupper() and len(w) > 2]
-    
-    # --- NEW: IDENTIFY "REQUIRED" NAMES ---
-    # We ignore common country names from strict requirement to focus on PEOPLE
+    # 1. RAKE Extraction Debug
+    r = Rake()
+    r.extract_keywords_from_text(claim)
+    phrases = r.get_ranked_phrases()
+    entities = [w for p in phrases for w in p.split(' ')]
+    print(f"[DEBUG] Phrases Extracted: {phrases}")
+    print(f"[DEBUG] Entities identified: {entities}")
+
+    # 2. Required Names Debug
     common_places = ["India", "US", "UK", "USA", "China", "World"]
     required_names = [e for e in entities if e not in common_places]
-    
-    # If no specific names (e.g. "Gold price drops"), use all entities
-    if not required_names:
-        required_names = entities
+    if not required_names: required_names = entities
+    print(f"[DEBUG] Required Names (for strict matching): {required_names}")
 
-    # Fallback if empty
-    if not entities:
-        entities = sorted(words, key=len, reverse=True)[:4]
-
-    # Strategies
-    query_strict = " AND ".join([f'"{e}"' for e in entities[:4]])
+    # 3. Query Strategy
+    query_strict = " AND ".join(entities[:4])
     query_broad = " OR ".join(entities[:3])
     
     def run_api_search(query_str, search_type):
         if not query_str: return []
-        
         print(f"\n[Tier 1] ({search_type}) GNews Search: '{query_str}'")
         
         params = {
-            "q": query_str,
-            "apikey": NEWS_API_KEY,
-            "lang": "en",
-            "country": "in",
-            "max": 10,
-            "in" : "title"
+            "q": query_str, "apikey": NEWS_API_KEY, "lang": "en",
+            "country": "in", "max": 10, "in": "title"
         }
         
         try:
             response = requests.get(url, params=params)
             data = response.json()
+            print(f"[DEBUG] API Status: {response.status_code} | Total Articles: {data.get('totalArticles', 0)}")
             
-            if response.status_code != 200:
-                print(f"❌ API Error: {data.get('errors')}")
-                return []
-
             if data.get("totalArticles", 0) > 0:
                 verified = []
                 for article in data.get("articles", []):
                     headline = article["title"]
-                    source_name = article["source"]["name"]
                     source_url = article["source"]["url"]
-                    
-                    # 3. Domain Filter
+                    source_name = article["source"]["name"]
+                    print(f"\n  🔍 Processing: {headline[:60]}... | Source: {source_url}")
+
+                    # Domain Filter
                     is_trusted = any(d in source_url for d in TRUSTED_DOMAINS)
                     if not is_trusted and source_name.lower() in [d.split('.')[0] for d in TRUSTED_DOMAINS]:
+
                         is_trusted = True
                     
-                    if is_trusted:
-                        # --- CRITICAL FIX: SUBJECT VALIDATION ---
-                        # If we have specific names (e.g. Mahatma), at least ONE must exist in headline
-                        # This prevents "Rahul Gandhi" matching "Mahatma Gandhi"
-                        
-                        subject_match = False
-                        if required_names:
-                            # Check if ANY of the specific names (Mahatma, Gandhi) are in headline
-                            # We require at least 50% of the required names to be present
-                            hits = sum(1 for name in required_names if name.lower() in headline.lower())
-                            if hits / len(required_names) >= 0.5:
-                                subject_match = True
-                        else:
-                            subject_match = True # No names to check
-                            
-                        # Standard Similarity
-                        similarity = SequenceMatcher(None, claim.lower(), headline.lower()).ratio()
-                        
-                        # Strict Logic: Must match Subject AND (Similarity > 0.3 OR 2+ Entities)
-                        if subject_match and (similarity > 0.3 or sum(1 for e in entities if e.lower() in headline.lower()) >= 2):
-                            print(f"   ✅ MATCH: {headline}")
-                            verified.append({
-                                "title": headline,
-                                "url": article["url"],
-                                "source": {"name": source_name}
-                            })
-                        else:
-                            # print(f"   ❌ Rejected (Subject Mismatch): {headline}")
-                            pass
-                        
+                    # Subject Validation Debug
+                    hits = sum(1 for name in required_names if name.lower() in headline.lower())
+                    hit_ratio = hits / len(required_names) if required_names else 1.0
+                    subject_match = hit_ratio >= 0.5
+                    print(f"  [DEBUG] Subject Match: {subject_match} (Hits: {hits}/{len(required_names)})")
+
+                    # Similarity Debug
+                    similarity = SequenceMatcher(None, claim.lower(), headline.lower()).ratio()
+                    entity_hits = sum(1 for e in entities if e.lower() in headline.lower())
+                    print(f"  [DEBUG] Similarity Score: {round(similarity, 2)} | Entity Hits: {entity_hits}")
+                    
+                    if is_trusted and subject_match and (similarity > 0.3 or entity_hits >= 2):
+                        print(f"    ✅ FINAL MATCH: {headline}")
+                        verified.append({"title": headline, "url": article["url"], "source": {"name": article["source"]["name"]}})
+                    else:
+                        print(f"    ❌ REJECTED: Logic condition not met (Trusted: {is_trusted})")
                 return verified
         except Exception as e:
-            print(f"Tier 1 Exception ({search_type}): {e}")
+            print(f"Tier 1 Exception: {e}")
         return []
 
-    # Execution
-    if query_strict:
-        articles = run_api_search(query_strict, "Strict")
-        if articles: return {"status": "found", "articles": articles}
-            
-    if query_broad and query_broad != query_strict:
-        articles = run_api_search(query_broad, "Broad")
-        if articles: return {"status": "found", "articles": articles}
-
-    return {"status": "not_found", "articles": []}
+    # Execution Flow
+    res = run_api_search(query_strict, "Strict")
+    if not res: res = run_api_search(query_broad, "Broad")
+    
+    return {"status": "found" if res else "not_found", "articles": res}
 
 # --- NLI LOGIC ---
 def check_tier_1_8_nli(claim: str, evidence: str) -> dict:
